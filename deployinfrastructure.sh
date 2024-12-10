@@ -5,6 +5,7 @@ TERRAFORM_DIR="./terraform"
 TARGETS=("module.main" "module.networking" "module.rds" "module.ecr" "module.fargate")
 LOG_FILE="./terraform_execution.log"
 LOG_FILE_PATH="./terraform/terraform_execution.log"
+ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
 
 # Step 0: Go into the Terraform directory
 cd "$TERRAFORM_DIR" || { echo "Error: Terraform directory not found." | tee -a "$LOG_FILE"; exit 1; }
@@ -79,7 +80,7 @@ docker push "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
 if [ $? -ne 0 ]; then
   echo "Error: Docker image push to ECR failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
   echo "Cleaning up..." | tee -a "$LOG_FILE"
-  docker rmi -f donut-app:latest 940482436406.dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE" 2>&1
+  docker rmi -f donut-app:latest "$ACCOUNT_ID".dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE" 2>&1
   exit 1
 fi
 
@@ -104,7 +105,7 @@ echo "Fargate app is accessible at: http://$LB_DNS_NAME" | tee -a "$LOG_FILE"
 
 # Step 8: Cleanup
 echo "Cleaning up..." | tee -a "$LOG_FILE"
-docker rmi -f donut-app:latest 940482436406.dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE" 2>&1
+docker rmi -f donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE" 2>&1
 
 echo "Infrastructure deployment complete!" | tee -a "$LOG_FILE"
 echo "Check the log file \($LOG_FILE\) for detailed execution logs." | tee -a "$LOG_FILE"

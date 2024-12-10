@@ -9,9 +9,3 @@ variable "aws_secret_key" {
     type        = string
     default     = ""
 }
-
-variable "donut_app_image" {
-    description = "The image for the donut app"
-    type        = string
-    default     = "donut-app:latest"
-}
