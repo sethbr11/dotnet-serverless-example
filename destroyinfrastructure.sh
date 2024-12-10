@@ -56,24 +56,27 @@ cleanup_ecr_repository() {
   fi
 }
 
+# Step 0: Go into the Terraform directory
+cd ./terraform || { echo "Error: Terraform directory not found." | tee -a "$LOG_FILE"; exit 1; }
+
 # Check for command-line arguments
 if [[ "$1" == "-c" ]]; then
   # If the user specified -c, run cleanup only
   echo "Running cleanup only..." | tee -a "$LOG_FILE"
   cleanup_ecr_repository
+  cd ..
 elif [[ "$1" == "" ]]; then
   # If no arguments, run terraform destroy
   echo "Running terraform destroy..." | tee -a "$LOG_FILE"
 
-  # Step 0: Go into the Terraform directory
-  cd ./terraform || { echo "Error: Terraform directory not found." | tee -a "$LOG_FILE"; exit 1; }
-
   # Run terraform destroy
   terraform destroy -auto-approve -no-color >> "$LOG_FILE" 2>&1
 
+  cd ..
   echo "Destroy complete!" | tee -a "$LOG_FILE"
 else
   # Invalid argument
   echo "Invalid option. Use '-c' for cleanup only or no argument for destroying all resources." | tee -a "$LOG_FILE"
+  cd ..
   exit 1
 fi
