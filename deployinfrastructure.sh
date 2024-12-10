@@ -79,8 +79,8 @@ echo "Pushing Docker image to ECR..." | tee -a "$LOG_FILE_PATH"
 docker push "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
 if [ $? -ne 0 ]; then
   echo "Error: Docker image push to ECR failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
-  echo "Cleaning up..." | tee -a "$LOG_FILE"
-  docker rmi -f donut-app:latest "$ACCOUNT_ID".dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE" 2>&1
+  echo "Cleaning up..." | tee -a "$LOG_FILE_PATH"
+  docker rmi -f donut-app:latest "$ACCOUNT_ID".dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE_PATH" 2>&1
   exit 1
 fi
 
