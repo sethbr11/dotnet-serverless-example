@@ -38,8 +38,14 @@ module "fargate" {
   db_password = module.rds.rds_password
   public_subnet_id = module.networking.public_subnet_id
   private_subnet_id = module.networking.private_subnet_id
+  ecr_repository_url = module.ecr.ecr_repository_url
+  security_group_id = module.networking.security_group_id
 }
 
 module "ecr" {
   source = "./modules/ecr"
+  vpc_id = module.networking.vpc_id
+  public_subnet_id = module.networking.public_subnet_id
+  private_subnet_id = module.networking.private_subnet_id
+  security_group_id = module.networking.security_group_id
 }

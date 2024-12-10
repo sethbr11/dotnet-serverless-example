@@ -95,7 +95,7 @@ terraform output -no-color >> "$LOG_FILE" 2>&1
 
 # Step 7: Output the URL of the Fargate app
 echo "Fetching Load Balancer DNS URL..." | tee -a "$LOG_FILE"
-LB_DNS_NAME=$(terraform output -raw lb_dns_name -no-color 2>>"$LOG_FILE")
+LB_DNS_NAME=$(terraform state show module.fargate.aws_lb.donut_lb | grep "dns_name" | awk '{print $3}' | tr -d '"' 2>>"$LOG_FILE")
 if [ -z "$LB_DNS_NAME" ]; then
   echo "Error: Load Balancer DNS name not found. Check Terraform outputs." | tee -a "$LOG_FILE"
 fi

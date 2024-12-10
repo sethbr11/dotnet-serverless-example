@@ -66,11 +66,13 @@ if [[ "$1" == "-c" ]]; then
   cleanup_ecr_repository
   cd ..
 elif [[ "$1" == "" ]]; then
-  # If no arguments, run terraform destroy
-  echo "Running terraform destroy..." | tee -a "$LOG_FILE"
+  # If no arguments, run cleanup and terraform destroy
+  echo "Running cleanup..." | tee -a "$LOG_FILE"
+  cleanup_ecr_repository 
 
-  # Run terraform destroy
+  echo "Running terraform destroy..." | tee -a "$LOG_FILE"
   terraform destroy -auto-approve -no-color >> "$LOG_FILE" 2>&1
+  terraform destroy -auto-approve -no-color >> "$LOG_FILE" 2>&1 # Run twice to ensure all resources are destroyed
 
   echo "Destroy complete!" | tee -a "$LOG_FILE"
   cd ..

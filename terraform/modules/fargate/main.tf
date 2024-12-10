@@ -36,43 +36,14 @@ variable "private_subnet_id" {
   type        = string
 }
 
-/***********
-Security Group Configuration
-************/
+variable "ecr_repository_url" {
+  description = "The URL of the ECR repository"
+  type        = string
+}
 
-# Create the web security group
-resource "aws_security_group" "web_security_group" {
-  name        = "Web security group"
-  description = "Web security group that allows 443, 80, and 22"
-  vpc_id      = var.vpc_id
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = -1
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+variable "security_group_id" {
+  description = "The security group to be used by the fargate service"
+  type        = string
 }
 
 /***********
@@ -119,10 +90,11 @@ resource "aws_ecs_task_definition" "donut_task" {
   cpu                      = "256" # 0.25 vCPU
   memory                   = "512" # 512 MB
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  
   container_definitions    = jsonencode([
     {
       name      = "donut-app"
-      image     = "donut-app:latest"
+      image     = "${var.ecr_repository_url}:latest"
       cpu       = 256
       memory    = 512
       essential = true
@@ -160,7 +132,7 @@ resource "aws_lb" "donut_lb" {
   name               = "donut-lb"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.web_security_group.id]
+  security_groups    = [var.security_group_id]
   subnets            = [var.public_subnet_id, var.private_subnet_id]
 }
 
@@ -181,19 +153,30 @@ resource "aws_lb_target_group" "donut_target_group" {
   protocol    = "HTTP"
   vpc_id      = var.vpc_id
   target_type = "ip"
+
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 3
+    unhealthy_threshold = 3
+  }
 }
+
 
 # Create and attach the ECS service to the load balancer
 resource "aws_ecs_service" "donut_ecs_service" {
   name            = "donut-service"
   cluster         = aws_ecs_cluster.donut_cluster.id
   task_definition = aws_ecs_task_definition.donut_task.arn
-  desired_count   = 1
+  desired_count   = 2 # Start with 2 instances
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = [var.public_subnet_id]
-    security_groups = [aws_security_group.web_security_group.id]
+    subnets         = [var.public_subnet_id, var.private_subnet_id]
+    security_groups = [var.security_group_id]
+    assign_public_ip = true # Ensure tasks get public IPs
   }
 
   load_balancer {
@@ -201,4 +184,12 @@ resource "aws_ecs_service" "donut_ecs_service" {
     container_name   = "donut-app"
     container_port   = 80
   }
+}
+
+/***********
+Outputs
+************/
+output "lb_dns_name" {
+  value       = aws_lb.donut_lb.dns_name
+  description = "DNS name of the load balancer"
 }

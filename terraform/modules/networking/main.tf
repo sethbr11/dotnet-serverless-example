@@ -169,6 +169,45 @@ resource "aws_route_table_association" "private_route_table_association_2" {
 }
 
 /***********
+Security Group Configuration
+************/
+
+# Create the web security group
+resource "aws_security_group" "web_security_group" {
+  name        = "Web security group"
+  description = "Web security group that allows 443, 80, and 22"
+  vpc_id      = aws_vpc.account_vpc.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = -1
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+/***********
 Outputs
 ************/
 output "vpc_id" {
@@ -184,4 +223,9 @@ output "public_subnet_id" {
 output "private_subnet_id" {
   value = aws_subnet.donuteast2b_private_sn.id
   description = "The ID of the private subnet"
+}
+
+output "security_group_id" {
+  value = aws_security_group.web_security_group.id
+  description = "The ID of the security group"
 }
