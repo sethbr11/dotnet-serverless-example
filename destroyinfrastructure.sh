@@ -72,8 +72,8 @@ elif [[ "$1" == "" ]]; then
   # Run terraform destroy
   terraform destroy -auto-approve -no-color >> "$LOG_FILE" 2>&1
 
-  cd ..
   echo "Destroy complete!" | tee -a "$LOG_FILE"
+  cd ..
 else
   # Invalid argument
   echo "Invalid option. Use '-c' for cleanup only or no argument for destroying all resources." | tee -a "$LOG_FILE"
