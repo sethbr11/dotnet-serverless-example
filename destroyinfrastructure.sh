@@ -68,11 +68,21 @@ if [[ "$1" == "-c" ]]; then
 elif [[ "$1" == "" ]]; then
   # If no arguments, run cleanup and terraform destroy
   echo "Running cleanup..." | tee -a "$LOG_FILE"
-  cleanup_ecr_repository 
+  cleanup_ecr_repository
 
   echo "Running terraform destroy..." | tee -a "$LOG_FILE"
   terraform destroy -auto-approve -no-color >> "$LOG_FILE" 2>&1
-  terraform destroy -auto-approve -no-color >> "$LOG_FILE" 2>&1 # Run twice to ensure all resources are destroyed
+
+  # Wait a few seconds to ensure resources have been destroyed
+  echo "Waiting for AWS resources to be destroyed..." | tee -a "$LOG_FILE"
+  sleep 30
+
+  # Verify if any resources are left (or check Terraform state)
+  remaining_resources=$(terraform state list)
+  if [[ -n "$remaining_resources" ]]; then
+    echo "Some resources remain. Running terraform destroy again..." | tee -a "$LOG_FILE"
+    terraform destroy -auto-approve -no-color -refresh=false >> "$LOG_FILE" 2>&1
+  fi
 
   echo "Destroy complete!" | tee -a "$LOG_FILE"
   cd ..

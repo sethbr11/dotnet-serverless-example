@@ -27,6 +27,7 @@ module "networking" {
 module "rds" {
   source = "./modules/rds"
   vpc_id = module.networking.vpc_id
+  db_security_group_id = module.networking.db_security_group_id
 }
 
 module "fargate" {
@@ -39,13 +40,9 @@ module "fargate" {
   public_subnet_id = module.networking.public_subnet_id
   private_subnet_id = module.networking.private_subnet_id
   ecr_repository_url = module.ecr.ecr_repository_url
-  security_group_id = module.networking.security_group_id
+  web_security_group_id = module.networking.web_security_group_id
 }
 
 module "ecr" {
   source = "./modules/ecr"
-  vpc_id = module.networking.vpc_id
-  public_subnet_id = module.networking.public_subnet_id
-  private_subnet_id = module.networking.private_subnet_id
-  security_group_id = module.networking.security_group_id
 }

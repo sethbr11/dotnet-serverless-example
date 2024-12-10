@@ -7,106 +7,36 @@ resource "aws_vpc" "account_vpc" {
   cidr_block = "10.0.0.0/16"
 }
 
-# Create the internet gateway
+# Create the Internet Gateway for public subnet access
 resource "aws_internet_gateway" "internet_gateway" {
   vpc_id = aws_vpc.account_vpc.id
 }
 
-# Create NACLs
-resource "aws_network_acl" "web_server_nacl" {
-  vpc_id = aws_vpc.account_vpc.id
-    egress {
-    rule_no = 100
-    protocol    = "tcp"
-    from_port   = 22
-    to_port     = 22
-    cidr_block = "0.0.0.0/0"
-    action = "allow"
-  }
+/***********
+Subnets Configuration
+************/
 
-  egress {
-    rule_no = 101
-    protocol    = "tcp"
-    from_port   = 80
-    to_port     = 80
-    cidr_block = "0.0.0.0/0"
-    action = "allow"
-  }
-
-  egress {
-    rule_no = 102
-    protocol    = "tcp"
-    from_port   = 443
-    to_port     = 443
-    cidr_block = "0.0.0.0/0"
-    action = "allow"
-    }
-}
-
-resource "aws_network_acl" "database_nacl" {
-  vpc_id = aws_vpc.account_vpc.id
-    egress {
-    rule_no = 100
-    protocol    = "tcp"
-    from_port   = 22
-    to_port     = 22
-    cidr_block = "0.0.0.0/0"
-    action = "allow"
-  }
-}
-
-# Define NACL rules
-resource "aws_network_acl_rule" "web_server_inbound_allow_ssh" {
-  network_acl_id = aws_network_acl.web_server_nacl.id
-  rule_number = 200
-  rule_action = "allow"
-  protocol    = "tcp"
-  from_port   = 22
-  to_port     = 22
-  cidr_block  = "0.0.0.0/0"
-}
-
-resource "aws_network_acl_rule" "web_server_inbound_allow_http" {
-  network_acl_id = aws_network_acl.web_server_nacl.id
-  rule_number = 201
-  rule_action = "allow"
-  protocol    = "tcp"
-  from_port   = 80
-  to_port     = 80
-  cidr_block  = "0.0.0.0/0"
-}
-
-resource "aws_network_acl_rule" "web_server_inbound_allow_https" {
-  network_acl_id = aws_network_acl.web_server_nacl.id
-  rule_number = 202
-  rule_action = "allow"
-  protocol    = "tcp"
-  from_port   = 443
-  to_port     = 443
-  cidr_block  = "0.0.0.0/0"
-}
-
-# Create the first subnet (public)
+# Public Subnet (for web server)
 resource "aws_subnet" "donuteast2a_public_sn" {
-  vpc_id            = aws_vpc.account_vpc.id
-  cidr_block        = "10.0.0.0/24"
-  availability_zone = "us-east-2a" 
+  vpc_id                   = aws_vpc.account_vpc.id
+  cidr_block               = "10.0.0.0/24"
+  availability_zone        = "us-east-2a"
   map_public_ip_on_launch = true
 }
 
-# Create the second subnet (private)
+# Private Subnet 1 (for database server)
 resource "aws_subnet" "donuteast2b_private_sn" {
-  vpc_id            = aws_vpc.account_vpc.id
-  cidr_block        = "10.0.1.0/24"
-  availability_zone = "us-east-2b" 
+  vpc_id                   = aws_vpc.account_vpc.id
+  cidr_block               = "10.0.1.0/24"
+  availability_zone        = "us-east-2b"
   map_public_ip_on_launch = false
 }
 
-# And another for use with the RDS instance
+# Private Subnet 2 (for additional private resources like RDS)
 resource "aws_subnet" "donuteast2a_private_sn" {
-  vpc_id            = aws_vpc.account_vpc.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "us-east-2a" 
+  vpc_id                   = aws_vpc.account_vpc.id
+  cidr_block               = "10.0.2.0/24"
+  availability_zone        = "us-east-2a"
   map_public_ip_on_launch = false
 }
 
@@ -120,39 +50,190 @@ resource "aws_db_subnet_group" "donutdb_subnet_group" {
   ]
 }
 
+/***********
+NACLs Configuration
+************/
+
+# Web Server NACL - Controls traffic to and from the web server
+resource "aws_network_acl" "web_server_nacl" {
+  vpc_id = aws_vpc.account_vpc.id
+
+  # Ingress Rules for Web Server
+  ingress {
+    rule_no    = 100
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no    = 101
+    protocol   = "tcp"
+    from_port  = 80
+    to_port    = 80
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no    = 102
+    protocol   = "tcp"
+    from_port  = 443
+    to_port    = 443
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  # Egress Rules for Web Server
+  egress {
+    rule_no    = 100
+    protocol   = "tcp"
+    from_port  = 80
+    to_port    = 80
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  egress {
+    rule_no    = 101
+    protocol   = "tcp"
+    from_port  = 443
+    to_port    = 443
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  # Default Egress for all traffic
+  egress {
+    rule_no    = 102
+    protocol   = "-1"
+    from_port  = 0
+    to_port    = 0
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+}
+
+# Database Server NACL - Controls traffic to and from the database server
+resource "aws_network_acl" "database_nacl" {
+  vpc_id = aws_vpc.account_vpc.id
+
+  # Ingress Rules for Database Server
+  ingress {
+    rule_no    = 100
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  ingress {
+    rule_no    = 101
+    protocol   = "tcp"
+    from_port  = 3306  # MySQL default port, adjust as needed
+    to_port    = 3306
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  # Egress Rules for Database Server
+  egress {
+    rule_no    = 100
+    protocol   = "tcp"
+    from_port  = 80
+    to_port    = 80
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  egress {
+    rule_no    = 101
+    protocol   = "tcp"
+    from_port  = 443
+    to_port    = 443
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+
+  # Default Egress for all traffic
+  egress {
+    rule_no    = 102
+    protocol   = "-1"
+    from_port  = 0
+    to_port    = 0
+    cidr_block = "0.0.0.0/0"
+    action     = "allow"
+  }
+}
+
+/***********
+NACL Associations
+************/
+
+# Associating NACLs to subnets
 resource "aws_network_acl_association" "web_server_nacl_association" {
-  subnet_id        = aws_subnet.donuteast2a_public_sn.id
-  network_acl_id   = aws_network_acl.web_server_nacl.id
+  subnet_id      = aws_subnet.donuteast2a_public_sn.id
+  network_acl_id = aws_network_acl.web_server_nacl.id
 }
 
 resource "aws_network_acl_association" "db_server_nacl_association" {
-  subnet_id        = aws_subnet.donuteast2b_private_sn.id
-  network_acl_id   = aws_network_acl.database_nacl.id
+  subnet_id      = aws_subnet.donuteast2b_private_sn.id
+  network_acl_id = aws_network_acl.database_nacl.id
 }
 
 resource "aws_network_acl_association" "db_server_nacl_association2" {
-  subnet_id        = aws_subnet.donuteast2a_private_sn.id
-  network_acl_id   = aws_network_acl.database_nacl.id
+  subnet_id      = aws_subnet.donuteast2a_private_sn.id
+  network_acl_id = aws_network_acl.database_nacl.id
 }
 
-# Create the public route table
+/***********
+NAT Gateway Configuration
+************/
+
+# Create Elastic IP for NAT Gateway
+resource "aws_eip" "nat_eip" {
+  domain = "vpc"
+}
+
+
+# Create the NAT Gateway to provide internet access to private subnets
+resource "aws_nat_gateway" "nat_gateway" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = aws_subnet.donuteast2a_public_sn.id
+}
+
+# Private Route Table Update - Route traffic through the NAT Gateway
+resource "aws_route" "nat_gateway_route" {
+  route_table_id         = aws_route_table.private_route_table.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.nat_gateway.id
+}
+
+/***********
+Route Tables Configuration
+************/
+
+# Public Route Table for public subnet
 resource "aws_route_table" "public_route_table" {
   vpc_id = aws_vpc.account_vpc.id
 }
 
-# Create the private route table
+# Private Route Table for private subnets
 resource "aws_route_table" "private_route_table" {
   vpc_id = aws_vpc.account_vpc.id
 }
 
-# Create the route
+# Create a route for the public route table to allow outbound internet access
 resource "aws_route" "internet_route" {
-  route_table_id     = aws_route_table.public_route_table.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id         = aws_internet_gateway.internet_gateway.id
+  route_table_id            = aws_route_table.public_route_table.id
+  destination_cidr_block    = "0.0.0.0/0"
+  gateway_id                = aws_internet_gateway.internet_gateway.id
 }
 
-# Create the subnet route table associations
+# Create subnet route table associations
 resource "aws_route_table_association" "public_route_table_association_1" {
   subnet_id         = aws_subnet.donuteast2a_public_sn.id
   route_table_id    = aws_route_table.public_route_table.id
@@ -169,13 +250,13 @@ resource "aws_route_table_association" "private_route_table_association_2" {
 }
 
 /***********
-Security Group Configuration
+Security Groups Configuration
 ************/
 
-# Create the web security group
+# Create Web Security Group (allow SSH, HTTP, and HTTPS)
 resource "aws_security_group" "web_security_group" {
   name        = "Web security group"
-  description = "Web security group that allows 443, 80, and 22"
+  description = "Security group that allows 443, 80, and 22"
   vpc_id      = aws_vpc.account_vpc.id
 
   ingress {
@@ -207,25 +288,30 @@ resource "aws_security_group" "web_security_group" {
   }
 }
 
-/***********
-Outputs
-************/
-output "vpc_id" {
-  value = aws_vpc.account_vpc.id
-  description = "The ID of the VPC"
-}
+# Create Database Security Group (allow access only from web servers)
+resource "aws_security_group" "db_security_group" {
+  name        = "DB security group"
+  description = "DB security group that allows access from web servers"
+  vpc_id      = aws_vpc.account_vpc.id
 
-output "public_subnet_id" {
-  value = aws_subnet.donuteast2a_public_sn.id
-  description = "The ID of the public subnet"
-}
+  ingress {
+    from_port   = 3306  # MySQL default port, adjust as needed
+    to_port     = 3306
+    protocol    = "tcp"
+    security_groups = [aws_security_group.web_security_group.id]  # Only allow traffic from the web server
+  }
 
-output "private_subnet_id" {
-  value = aws_subnet.donuteast2b_private_sn.id
-  description = "The ID of the private subnet"
-}
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-output "security_group_id" {
-  value = aws_security_group.web_security_group.id
-  description = "The ID of the security group"
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = -1
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }

@@ -2,8 +2,8 @@ pdcdonuts/
 .DS_Store
 .terraform/
 .terraform.lock.hcl
-variables.tf
 terraform_execution.log
 terraform.tfstate
 .terraform.tfstate.lock.info
 terraform.tfstate.backup
+terraform/variables.tf
