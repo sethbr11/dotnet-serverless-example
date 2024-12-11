@@ -11,6 +11,11 @@ output "public_subnet_id" {
   description = "The ID of the public subnet"
 }
 
+output "public_subnet2_id" {
+  value       = aws_subnet.donuteast2b_public_sn.id
+  description = "The ID of the second public subnet"
+}
+
 output "private_subnet_id" {
   value       = aws_subnet.donuteast2b_private_sn.id
   description = "The ID of the private subnet"

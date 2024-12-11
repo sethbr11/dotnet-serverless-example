@@ -29,10 +29,16 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 }
 
-# Attach IAM Policy to ECS Task Role
+# Attach Default ECS Task Execution Role Policy
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# Attach Read-Only ECR Policy for Image Retrieval
+resource "aws_iam_role_policy_attachment" "ecs_task_ecr_readonly_policy" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
 # ECS Task Definition
@@ -66,6 +72,14 @@ resource "aws_ecs_task_definition" "donut_task" {
         { name = "DB_USER", value = var.db_user },
         { name = "DB_PASSWORD", value = var.db_password }
       ]
+
+      runtime_platform = {
+        cpu_architecture = "ARM64"
+      }
+
+      tags = {
+        Name = "donut-rds-app-task"
+      }
     }
   ])
 }
@@ -76,7 +90,7 @@ resource "aws_lb" "donut_lb" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [var.web_security_group_id]
-  subnets            = [var.public_subnet_id, var.private_subnet_id]
+  subnets            = [var.public_subnet_id, var.public_subnet2_id]
 }
 
 # Load Balancer Listener
@@ -118,7 +132,7 @@ resource "aws_ecs_service" "donut_ecs_service" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets         = [var.public_subnet_id, var.private_subnet_id]
+    subnets         = [var.public_subnet_id]
     security_groups = [var.web_security_group_id]
     assign_public_ip = true  # Ensure tasks get public IPs
   }
