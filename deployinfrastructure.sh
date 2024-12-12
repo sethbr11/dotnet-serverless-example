@@ -7,14 +7,20 @@ LOG_FILE="./terraform_execution.log"
 LOG_FILE_PATH="./terraform/terraform_execution.log"
 ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
 EXECUTE_SQL=false
+SKIP_DOCKER=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
     -sql)
-      echo "SQL flag detected. SQL script will be executed." | tee -a "$LOG_FILE"
+      echo "SQL flag detected. SQL script will be executed." | tee -a "$LOG_FILE_PATH"
       EXECUTE_SQL=true
       shift # Remove flag from arguments
+      ;;
+    -skip-docker)
+      echo "Skip Docker flag detected. Docker build/push will be skipped." | tee -a "$LOG_FILE_PATH"
+      SKIP_DOCKER=true
+      shift
       ;;
     *)
       echo "Unknown option: $1" | tee -a "$LOG_FILE"
@@ -80,69 +86,72 @@ if [ -z "$ECR_URL" ]; then
   exit 1
 fi
 
-# Authenticate Docker with ECR
-echo "Authenticating Docker with ECR..." | tee -a "$LOG_FILE"
-aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin "$ECR_URL" >> "$LOG_FILE" 2>&1
-if [ $? -ne 0 ]; then
-  echo "Error: Docker authentication with ECR failed. Check the log file for details." | tee -a "$LOG_FILE"
-  exit 1
-fi
-
-# Build, Tag, and Push Docker Image
-echo "Building Docker image..." | tee -a "$LOG_FILE"
 cd ..
-CURRENT_PLATFORM=$(uname -m)
 
-if [ "$CURRENT_PLATFORM" == "x86_64" ]; then
-  docker build -t donut-app . >> "$LOG_FILE_PATH" 2>&1
+# Authenticate Docker with ECR
+if [ "$SKIP_DOCKER" = false ]; then
+  echo "Authenticating Docker with ECR..." | tee -a "$LOG_FILE_PATH"
+  aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin "$ECR_URL" >> "$LOG_FILE_PATH" 2>&1
   if [ $? -ne 0 ]; then
-    echo "Error: Docker build failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+    echo "Error: Docker authentication with ECR failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
     exit 1
   fi
 
-  echo "Tagging Docker image..." | tee -a "$LOG_FILE_PATH"
-  docker tag donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
-  if [ $? -ne 0 ]; then
-    echo "Error: Docker image tagging failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
-    exit 1
-  fi
+  # Build, Tag, and Push Docker Image
+  echo "Building Docker image..." | tee -a "$LOG_FILE_PATH"
+  CURRENT_PLATFORM=$(uname -m)
 
-  # Push Docker Image to ECR
-  echo "Pushing Docker image to ECR..." | tee -a "$LOG_FILE_PATH"
-  docker push "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
-  if [ $? -ne 0 ]; then
-    echo "Error: Docker image push to ECR failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+  if [ "$CURRENT_PLATFORM" == "x86_64" ]; then
+    docker build -t donut-app . >> "$LOG_FILE_PATH" 2>&1
+    if [ $? -ne 0 ]; then
+      echo "Error: Docker build failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+      exit 1
+    fi
+
+    echo "Tagging Docker image..." | tee -a "$LOG_FILE_PATH"
+    docker tag donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
+    if [ $? -ne 0 ]; then
+      echo "Error: Docker image tagging failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+      exit 1
+    fi
+
+    # Push Docker Image to ECR
+    echo "Pushing Docker image to ECR..." | tee -a "$LOG_FILE_PATH"
+    docker push "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
+    if [ $? -ne 0 ]; then
+      echo "Error: Docker image push to ECR failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+      echo "Cleaning up..." | tee -a "$LOG_FILE_PATH"
+      docker rmi -f donut-app:latest "$ACCOUNT_ID".dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE_PATH" 2>&1
+      exit 1
+    fi
+
     echo "Cleaning up..." | tee -a "$LOG_FILE_PATH"
-    docker rmi -f donut-app:latest "$ACCOUNT_ID".dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE_PATH" 2>&1
-    exit 1
+    docker rmi -f donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
+
+    echo "Docker image successfully pushed to ECR." | tee -a "$LOG_FILE_PATH"
+  else
+    echo "Building and pushing Docker image for platform(s): linux/amd64..." | tee -a "$LOG_FILE_PATH"
+
+    # Ensure buildx is created and used only once
+    docker buildx create --use >> "$LOG_FILE_PATH" 2>&1 || echo "Buildx is already initialized." | tee -a "$LOG_FILE_PATH"
+
+    # Build and tag Docker image
+    docker buildx build --platform "linux/amd64" -t "$ECR_URL:latest" --push . >> "$LOG_FILE_PATH" 2>&1
+
+    # Check if the build succeeded
+    if [ $? -ne 0 ]; then
+      echo "Error: Docker build/push failed. Check the log file for details." >> "$LOG_FILE_PATH"
+      exit 1
+    fi
+
+    echo "Docker image successfully pushed to ECR. Remember to clean up your Docker containers and images." | tee -a "$LOG_FILE_PATH"
   fi
-
-  echo "Cleaning up..." | tee -a "$LOG_FILE_PATH"
-  docker rmi -f donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
-
-  echo "Docker image successfully pushed to ECR." | tee -a "$LOG_FILE_PATH"
-else
-  echo "Building and pushing Docker image for platform(s): linux/amd64..." | tee -a "$LOG_FILE_PATH"
-
-  # Ensure buildx is created and used only once
-  docker buildx create --use >> "$LOG_FILE_PATH" 2>&1 || echo "Buildx is already initialized." | tee -a "$LOG_FILE_PATH"
-
-  # Build and tag Docker image
-  docker buildx build --platform "linux/amd64" -t "$ECR_URL:latest" --push . >> "$LOG_FILE_PATH" 2>&1
-
-  # Check if the build succeeded
-  if [ $? -ne 0 ]; then
-    echo "Error: Docker build/push failed. Check the log file for details." >> "$LOG_FILE_PATH"
-    exit 1
-  fi
-
-  echo "Docker image successfully pushed to ECR. Remember to clean up your Docker containers and images." | tee -a "$LOG_FILE_PATH"
 fi
 
 # Populate RDS with initial data (conditional on -sql flag)
 if [ "$EXECUTE_SQL" = true ]; then
-  echo "Initializing RDS database with SQL file..." | tee -a "$LOG_FILE_PATH"
-  mysql -h "$RDS_ENDPOINT" -u admin -p password < ../initialize_db.sql >> "$LOG_FILE_PATH" 2>&1
+  echo "Initializing RDS database with SQL file. When prompted, enter the password for the database." | tee -a "$LOG_FILE_PATH"
+  mysql -h "$RDS_ENDPOINT" -u admin -p < ./initialize_db.sql >> "$LOG_FILE_PATH" 2>&1
   if [ $? -ne 0 ]; then
       echo "Error: Failed to execute SQL script. Check the log file for details." | tee -a "$LOG_FILE_PATH"
       exit 1
