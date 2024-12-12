@@ -319,7 +319,7 @@ resource "aws_security_group" "db_security_group" {
     from_port   = 3306  # MySQL default port, adjust as needed
     to_port     = 3306
     protocol    = "tcp"
-    security_groups = [aws_security_group.web_security_group.id]  # Only allow traffic from the web server
+    security_groups = [aws_security_group.web_security_group.id]
   }
 
   ingress {
@@ -327,6 +327,13 @@ resource "aws_security_group" "db_security_group" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
   }
 
   egress {
