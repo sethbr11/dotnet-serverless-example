@@ -73,10 +73,6 @@ resource "aws_ecs_task_definition" "donut_task" {
         { name = "DB_PASSWORD", value = var.db_password }
       ]
 
-      runtime_platform = {
-        cpu_architecture = "ARM64"
-      }
-
       tags = {
         Name = "donut-rds-app-task"
       }

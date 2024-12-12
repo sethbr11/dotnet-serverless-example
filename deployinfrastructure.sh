@@ -58,33 +58,56 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Step 4.3: Build and Tag Docker Image
+# Step 4.3: Build, Tag, and Push Docker Image
 echo "Building Docker image..." | tee -a "$LOG_FILE"
 cd ..
-docker build -t donut-app . >> "$LOG_FILE_PATH" 2>&1
-if [ $? -ne 0 ]; then
-  echo "Error: Docker build failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
-  exit 1
-fi
+CURRENT_PLATFORM=$(uname -m)
 
-echo "Tagging Docker image..." | tee -a "$LOG_FILE_PATH"
-docker tag donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
-if [ $? -ne 0 ]; then
-  echo "Error: Docker image tagging failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
-  exit 1
-fi
+if [ "$CURRENT_PLATFORM" == "x86_64" ]; then
+  docker build -t donut-app . >> "$LOG_FILE_PATH" 2>&1
+  if [ $? -ne 0 ]; then
+    echo "Error: Docker build failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+    exit 1
+  fi
 
-# Step 4.4: Push Docker Image to ECR
-echo "Pushing Docker image to ECR..." | tee -a "$LOG_FILE_PATH"
-docker push "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
-if [ $? -ne 0 ]; then
-  echo "Error: Docker image push to ECR failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+  echo "Tagging Docker image..." | tee -a "$LOG_FILE_PATH"
+  docker tag donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
+  if [ $? -ne 0 ]; then
+    echo "Error: Docker image tagging failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+    exit 1
+  fi
+
+  # Push Docker Image to ECR
+  echo "Pushing Docker image to ECR..." | tee -a "$LOG_FILE_PATH"
+  docker push "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
+  if [ $? -ne 0 ]; then
+    echo "Error: Docker image push to ECR failed. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+    echo "Cleaning up..." | tee -a "$LOG_FILE_PATH"
+    docker rmi -f donut-app:latest "$ACCOUNT_ID".dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE_PATH" 2>&1
+    exit 1
+  fi
+
   echo "Cleaning up..." | tee -a "$LOG_FILE_PATH"
-  docker rmi -f donut-app:latest "$ACCOUNT_ID".dkr.ecr.us-east-2.amazonaws.com/donut-rds-app:latest >> "$LOG_FILE_PATH" 2>&1
-  exit 1
-fi
+  docker rmi -f donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE_PATH" 2>&1
 
-echo "Docker image successfully pushed to ECR." | tee -a "$LOG_FILE_PATH"
+  echo "Docker image successfully pushed to ECR." | tee -a "$LOG_FILE_PATH"
+else
+  echo "Building and pushing Docker image for platform(s): linux/amd64..." | tee -a "$LOG_FILE_PATH"
+
+  # Ensure buildx is created and used only once
+  docker buildx create --use >> "$LOG_FILE_PATH" 2>&1 || echo "Buildx is already initialized." | tee -a "$LOG_FILE_PATH"
+
+  # Build and tag Docker image
+  docker buildx build --platform "linux/amd64" -t "$ECR_URL:latest" --push . >> "$LOG_FILE_PATH" 2>&1
+
+  # Check if the build succeeded
+  if [ $? -ne 0 ]; then
+    echo "Error: Docker build/push failed. Check the log file for details." >> "$LOG_FILE_PATH"
+    exit 1
+  fi
+
+  echo "Docker image successfully pushed to ECR. Remember to clean up your Docker containers and images." | tee -a "$LOG_FILE_PATH"
+fi
 
 # Step 5: Apply Fargate Deployment
 cd terraform
@@ -102,10 +125,5 @@ if [ -z "$LB_DNS_NAME" ]; then
 fi
 
 echo "Fargate app is accessible at: http://$LB_DNS_NAME" | tee -a "$LOG_FILE"
-
-# Step 8: Cleanup
-echo "Cleaning up..." | tee -a "$LOG_FILE"
-docker rmi -f donut-app:latest "$ECR_URL:latest" >> "$LOG_FILE" 2>&1
-
 echo "Infrastructure deployment complete!" | tee -a "$LOG_FILE"
-echo "Check the log file \($LOG_FILE\) for detailed execution logs." | tee -a "$LOG_FILE"
+echo "Check the log file for detailed execution logs." | tee -a "$LOG_FILE"
