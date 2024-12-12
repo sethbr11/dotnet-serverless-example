@@ -67,9 +67,9 @@ resource "aws_ecs_task_definition" "donut_task" {
       ]
       
       environment = [
-        { name = "DB_HOST", value = var.db_endpoint },
+        { name = "DB_HOST", value = join("", slice(split(":", var.db_endpoint), 0, 1)) }, # Separate the endpoint from the port
         { name = "DB_PORT", value = tostring(var.db_port) },
-        { name = "DB_USER", value = var.db_user },
+        { name = "DB_USERNAME", value = var.db_user },
         { name = "DB_PASSWORD", value = var.db_password }
       ]
 

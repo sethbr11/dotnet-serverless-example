@@ -6,8 +6,24 @@ TARGETS=("module.main" "module.networking" "module.rds" "module.ecr" "module.far
 LOG_FILE="./terraform_execution.log"
 LOG_FILE_PATH="./terraform/terraform_execution.log"
 ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+EXECUTE_SQL=false
 
-# Step 0: Go into the Terraform directory
+# Parse command-line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -sql)
+      echo "SQL flag detected. SQL script will be executed." | tee -a "$LOG_FILE"
+      EXECUTE_SQL=true
+      shift # Remove flag from arguments
+      ;;
+    *)
+      echo "Unknown option: $1" | tee -a "$LOG_FILE"
+      exit 1
+      ;;
+  esac
+done
+
+# Go into the Terraform directory
 cd "$TERRAFORM_DIR" || { echo "Error: Terraform directory not found." | tee -a "$LOG_FILE"; exit 1; }
 
 # Clear the log file
@@ -32,7 +48,8 @@ apply_module "${TARGETS[2]}"
 # Output RDS endpoint
 echo "Fetching RDS endpoint..." | tee -a "$LOG_FILE"
 terraform refresh >> "$LOG_FILE" 2>&1
-RDS_ENDPOINT=$(terraform state show module.rds.aws_db_instance.donut_db | grep "address" | awk '{print $3}' | tr -d '"')
+RDS_ENDPOINT=$(terraform state show module.rds.aws_db_instance.donutdb | grep "endpoint" | awk '{print $3}' | tr -d '"' | tr -d '[]' | cut -d':' -f1)
+
 if [ -z "$RDS_ENDPOINT" ]; then
   echo "Error: RDS endpoint not found. Check Terraform outputs." | tee -a "$LOG_FILE"
   exit 1
@@ -43,7 +60,7 @@ echo "RDS endpoint: $RDS_ENDPOINT" | tee -a "$LOG_FILE"
 # Apply ECR module
 apply_module "${TARGETS[3]}"
 
-# Step 4.1: Fetch ECR Repository URL
+# Fetch ECR Repository URL
 echo "Checking if ECR repository exists in state..." | tee -a "$LOG_FILE"
 terraform show | grep "aws_ecr_repository.app_repository" >> "$LOG_FILE" 2>&1
 if [ $? -ne 0 ]; then
@@ -63,7 +80,7 @@ if [ -z "$ECR_URL" ]; then
   exit 1
 fi
 
-# Step 4.2: Authenticate Docker with ECR
+# Authenticate Docker with ECR
 echo "Authenticating Docker with ECR..." | tee -a "$LOG_FILE"
 aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin "$ECR_URL" >> "$LOG_FILE" 2>&1
 if [ $? -ne 0 ]; then
@@ -71,7 +88,7 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# Step 4.3: Build, Tag, and Push Docker Image
+# Build, Tag, and Push Docker Image
 echo "Building Docker image..." | tee -a "$LOG_FILE"
 cd ..
 CURRENT_PLATFORM=$(uname -m)
@@ -122,15 +139,28 @@ else
   echo "Docker image successfully pushed to ECR. Remember to clean up your Docker containers and images." | tee -a "$LOG_FILE_PATH"
 fi
 
-# Step 5: Apply Fargate Deployment
+# Populate RDS with initial data (conditional on -sql flag)
+if [ "$EXECUTE_SQL" = true ]; then
+  echo "Initializing RDS database with SQL file..." | tee -a "$LOG_FILE_PATH"
+  mysql -h "$RDS_ENDPOINT" -u admin -p password < ../initialize_db.sql >> "$LOG_FILE_PATH" 2>&1
+  if [ $? -ne 0 ]; then
+      echo "Error: Failed to execute SQL script. Check the log file for details." | tee -a "$LOG_FILE_PATH"
+      exit 1
+  fi
+  echo "Database initialization complete." | tee -a "$LOG_FILE_PATH"
+else
+  echo "Skipping SQL initialization." | tee -a "$LOG_FILE_PATH"
+fi
+
+# Apply Fargate Deployment
 cd terraform
 apply_module "${TARGETS[4]}"
 
-# Step 6: Output results
+# Output results
 echo "Terraform apply completed. Outputting results..." | tee -a "$LOG_FILE"
 terraform output -no-color >> "$LOG_FILE" 2>&1
 
-# Step 7: Output the URL of the Fargate app
+# Output the URL of the Fargate app
 echo "Fetching Load Balancer DNS URL..." | tee -a "$LOG_FILE"
 LB_DNS_NAME=$(terraform state show module.fargate.aws_lb.donut_lb | grep "dns_name" | awk '{print $3}' | tr -d '"' 2>>"$LOG_FILE")
 if [ -z "$LB_DNS_NAME" ]; then
