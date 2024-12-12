@@ -124,7 +124,7 @@ resource "aws_ecs_service" "donut_ecs_service" {
   name            = "donut-service"
   cluster         = aws_ecs_cluster.donut_cluster.id
   task_definition = aws_ecs_task_definition.donut_task.arn
-  desired_count   = 1  # Start with 1 instance
+  desired_count   = 3
   launch_type     = "FARGATE"
 
   network_configuration {

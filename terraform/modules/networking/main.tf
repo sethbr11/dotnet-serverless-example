@@ -5,6 +5,7 @@ VPC Configuration
 # Create the VPC
 resource "aws_vpc" "account_vpc" {
   cidr_block = "10.0.0.0/16"
+  enable_dns_hostnames = "true"
   tags = { Name = "donut-vpc" }
 }
 
@@ -21,7 +22,7 @@ Subnets Configuration
 # Public Subnet (for web server)
 resource "aws_subnet" "donuteast2a_public_sn" {
   vpc_id                   = aws_vpc.account_vpc.id
-  cidr_block               = "10.0.0.0/24"
+  cidr_block               = "10.0.0.0/18"
   availability_zone        = "us-east-2a"
   map_public_ip_on_launch = true
   tags = { Name = "donut-public-sn" }
@@ -30,7 +31,7 @@ resource "aws_subnet" "donuteast2a_public_sn" {
 # Public Subnet 2 (for web server and load balancer)
 resource "aws_subnet" "donuteast2b_public_sn" {
   vpc_id                   = aws_vpc.account_vpc.id
-  cidr_block               = "10.0.1.0/24"
+  cidr_block               = "10.0.64.0/18"
   availability_zone        = "us-east-2b"
   map_public_ip_on_launch = true
   tags = { Name = "donut-public-sn2" }
@@ -39,18 +40,18 @@ resource "aws_subnet" "donuteast2b_public_sn" {
 # Private Subnet 1 (for database server)
 resource "aws_subnet" "donuteast2b_private_sn" {
   vpc_id                   = aws_vpc.account_vpc.id
-  cidr_block               = "10.0.2.0/24"
+  cidr_block               = "10.0.128.0/18"
   availability_zone        = "us-east-2b"
-  map_public_ip_on_launch = false
+  map_public_ip_on_launch = true
   tags = { Name = "donut-private-sn" }
 }
 
 # Private Subnet 2 (for additional private resources like RDS)
 resource "aws_subnet" "donuteast2a_private_sn" {
   vpc_id                   = aws_vpc.account_vpc.id
-  cidr_block               = "10.0.3.0/24"
+  cidr_block               = "10.0.192.0/18"
   availability_zone        = "us-east-2a"
-  map_public_ip_on_launch = false
+  map_public_ip_on_launch = true
   tags = { Name = "donut-private-sn2" }
 }
 
@@ -98,6 +99,16 @@ NACLs Configuration
 #     protocol   = "tcp"
 #     from_port  = 443
 #     to_port    = 443
+#     cidr_block = "0.0.0.0/0"
+#     action     = "allow"
+#   }
+
+#   # Default Egress for all traffic
+#   ingress {
+#     rule_no    = 102
+#     protocol   = "-1"
+#     from_port  = 0
+#     to_port    = 0
 #     cidr_block = "0.0.0.0/0"
 #     action     = "allow"
 #   }
@@ -152,6 +163,16 @@ NACLs Configuration
 #     protocol   = "tcp"
 #     from_port  = 3306  # MySQL default port, adjust as needed
 #     to_port    = 3306
+#     cidr_block = "0.0.0.0/0"
+#     action     = "allow"
+#   }
+
+#   # Default Egress for all traffic
+#   ingress {
+#     rule_no    = 102
+#     protocol   = "-1"
+#     from_port  = 0
+#     to_port    = 0
 #     cidr_block = "0.0.0.0/0"
 #     action     = "allow"
 #   }
@@ -223,11 +244,11 @@ resource "aws_nat_gateway" "nat_gateway" {
 }
 
 # Private Route Table Update - Route traffic through the NAT Gateway
-resource "aws_route" "nat_gateway_route" {
-  route_table_id         = aws_route_table.private_route_table.id
-  destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat_gateway.id
-}
+#resource "aws_route" "nat_gateway_route" {
+#  route_table_id         = aws_route_table.private_route_table.id
+#  destination_cidr_block = "0.0.0.0/0"
+#  nat_gateway_id         = aws_nat_gateway.nat_gateway.id
+#}
 
 /***********
 Route Tables Configuration
@@ -252,6 +273,12 @@ resource "aws_route" "internet_route" {
   gateway_id                = aws_internet_gateway.internet_gateway.id
 }
 
+resource "aws_route" "private_internet_route" {
+  route_table_id            = aws_route_table.private_route_table.id
+  destination_cidr_block    = "0.0.0.0/0"
+  gateway_id                = aws_internet_gateway.internet_gateway.id
+}
+
 # Create subnet route table associations
 resource "aws_route_table_association" "public_route_table_association_1" {
   subnet_id         = aws_subnet.donuteast2a_public_sn.id
@@ -260,12 +287,12 @@ resource "aws_route_table_association" "public_route_table_association_1" {
 
 resource "aws_route_table_association" "private_route_table_association_1" {
   subnet_id         = aws_subnet.donuteast2b_private_sn.id
-  route_table_id    = aws_route_table.private_route_table.id
+  route_table_id    = aws_route_table.public_route_table.id
 }
 
 resource "aws_route_table_association" "private_route_table_association_2" {
   subnet_id         = aws_subnet.donuteast2a_private_sn.id
-  route_table_id    = aws_route_table.private_route_table.id
+  route_table_id    = aws_route_table.public_route_table.id
 }
 
 /***********
@@ -319,7 +346,14 @@ resource "aws_security_group" "db_security_group" {
     from_port   = 3306  # MySQL default port, adjust as needed
     to_port     = 3306
     protocol    = "tcp"
-    security_groups = [aws_security_group.web_security_group.id]
+    security_groups = [aws_security_group.web_security_group.id]  # Only allow traffic from the web server
+  }
+
+    ingress {
+    from_port   = 3306  # MySQL default port, adjust as needed
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
@@ -327,13 +361,6 @@ resource "aws_security_group" "db_security_group" {
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    cidr_blocks = [var.my_ip]
   }
 
   egress {

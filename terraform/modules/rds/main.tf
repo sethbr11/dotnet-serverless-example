@@ -13,5 +13,6 @@ resource "aws_db_instance" "donutdb" {
   db_subnet_group_name = "donutdb_subnet_group" 
   vpc_security_group_ids = [var.db_security_group_id] 
   skip_final_snapshot = true
+  publicly_accessible = true
   tags = { Name = "donutdb" } 
 }

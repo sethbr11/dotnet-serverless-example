@@ -28,6 +28,19 @@ apply_module() {
 apply_module "${TARGETS[0]}"
 apply_module "${TARGETS[1]}"
 apply_module "${TARGETS[2]}"
+
+# Output RDS endpoint
+echo "Fetching RDS endpoint..." | tee -a "$LOG_FILE"
+terraform refresh >> "$LOG_FILE" 2>&1
+RDS_ENDPOINT=$(terraform state show module.rds.aws_db_instance.donut_db | grep "address" | awk '{print $3}' | tr -d '"')
+if [ -z "$RDS_ENDPOINT" ]; then
+  echo "Error: RDS endpoint not found. Check Terraform outputs." | tee -a "$LOG_FILE"
+  exit 1
+fi
+
+echo "RDS endpoint: $RDS_ENDPOINT" | tee -a "$LOG_FILE"
+
+# Apply ECR module
 apply_module "${TARGETS[3]}"
 
 # Step 4.1: Fetch ECR Repository URL
@@ -125,5 +138,6 @@ if [ -z "$LB_DNS_NAME" ]; then
 fi
 
 echo "Fargate app is accessible at: http://$LB_DNS_NAME" | tee -a "$LOG_FILE"
+echo "Please wait a few minutes to allow the tasks to start and the DNS to propagate." | tee -a "$LOG_FILE"
 echo "Infrastructure deployment complete!" | tee -a "$LOG_FILE"
 echo "Check the log file for detailed execution logs." | tee -a "$LOG_FILE"
