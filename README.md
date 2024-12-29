@@ -5,3 +5,5 @@ To run the project, enter the main folder and run `docker build -t proj2 .` foll
 ## Setup
 
 Before running the code in this project, you will need Docker and AWS CLI installed and configured. The only thing you will need to do within the project itself is rename the `terraform/variables.tf.base` file to just `terraform/variables.tf` and put in your AWS credentials. These credentials should be configured for an IAM user you've created in AWS for terraform to do its thing. It should be set up with roughly the following permissions: AmazonEC2ContainerRegistryFullAccess, AmazonEC2ContainerRegistryPowerUser, AmazonEC2ContainerServiceRole, AmazonEC2FullAccess, AmazonECS_FullAccess, AmazonRDSFullAccess, CloudWatchLogsFullAccess, IAMFullAccess.
+
+Lastly, the Dockerfile is configured to clone a sample .NET app found [here](https://github.com/sethbr11/pdcdonuts). This should be reconfigured to point to your app, whether you use git clone or whether you use Dockerfile's COPY command.
